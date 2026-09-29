@@ -1,0 +1,12 @@
+{
+  "user": "Наталья П.",
+  "attempts": [
+    {
+      "ticket_id": 1,
+      "score": 34,
+      "wrong_count": 16,
+      "percentage": 68,
+      "timestamp": "2026-09-29T23:08:07.890815"
+    }
+  ]
+}
