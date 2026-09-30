@@ -7,6 +7,7 @@ let userAnswers = [];
 let statistics = {};
 let currentUserToken = null;
 let currentUserName = null;
+let currentUserIsAdmin = false;
 
 const API_BASE = 'http://201.34.156.14:5002';
 
@@ -78,6 +79,7 @@ async function validateToken() {
         if (data.valid) {
             currentUserToken = token;
             currentUserName = data.user;
+            currentUserIsAdmin = data.is_admin || false;
             await loadUserStatistics();
             showMainMenu();
         } else {
@@ -159,11 +161,18 @@ function showMainMenu() {
     });
     ticketsHtml += '</div>';
 
+    const adminButton = currentUserIsAdmin 
+        ? `<button class="btn btn-admin" onclick="showAdminPanel()">⚙️ Админ-панель</button>` 
+        : '';
+
     app.innerHTML = `
         <div class="main-menu">
             <div class="user-info">
                 <div class="user-name">👤 ${currentUserName}</div>
-                <button class="btn btn-secondary btn-small" onclick="logout()">Выйти</button>
+                <div class="user-actions">
+                    ${adminButton}
+                    <button class="btn btn-secondary btn-small" onclick="logout()">Выйти</button>
+                </div>
             </div>
             
             <div class="stats-panel">
@@ -217,10 +226,193 @@ function showMainMenu() {
     `;
 }
 
+// === АДМИН-ПАНЕЛЬ ===
+async function showAdminPanel() {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+        <div class="admin-panel">
+            <div class="admin-header">
+                <h2>⚙️ Админ-панель</h2>
+                <button class="btn btn-secondary" onclick="showMainMenu()">← Назад</button>
+            </div>
+
+            <div class="admin-section">
+                <h3>Создать новый токен</h3>
+                <div class="admin-form">
+                    <input type="text" id="newUserName" placeholder="Введите имя пользователя (например: Иван Сидоров)" class="admin-input">
+                    <button class="btn btn-primary" onclick="createNewToken()">Создать токен</button>
+                </div>
+                <div id="newTokenResult" class="token-result"></div>
+            </div>
+
+            <div class="admin-section">
+                <h3>Список токенов</h3>
+                <div id="tokensList" class="tokens-list">Загрузка...</div>
+            </div>
+        </div>
+    `;
+    await loadTokensList();
+}
+
+// === ЗАГРУЗКА СПИСКА ТОКЕНОВ ===
+async function loadTokensList() {
+    const listDiv = document.getElementById('tokensList');
+    try {
+        const response = await fetch(`${API_BASE}/api/tokens/list`);
+        const tokens = await response.json();
+        
+        let html = '<table class="tokens-table"><thead><tr><th>Имя</th><th>Токен</th><th>Статус</th><th>Действия</th></tr></thead><tbody>';
+        
+        for (const [token, info] of Object.entries(tokens)) {
+            const statusClass = info.active ? 'status-active' : 'status-inactive';
+            const statusText = info.active ? 'Активен' : 'Неактивен';
+            const adminBadge = info.is_admin ? ' <span class="admin-badge">Админ</span>' : '';
+            
+            let actionButtons = '';
+            if (!info.is_admin) {
+                if (info.active) {
+                    actionButtons = `<button class="btn btn-danger btn-small" onclick="deactivateToken('${token}')">Деактивировать</button>`;
+                } else {
+                    actionButtons = `<button class="btn btn-success btn-small" onclick="activateToken('${token}')">Активировать</button>`;
+                }
+            } else {
+                actionButtons = '<span class="protected-text">Защищён</span>';
+            }
+            
+            html += `
+                <tr>
+                    <td>${info.name}${adminBadge}</td>
+                    <td class="token-cell"><code>${token}</code></td>
+                    <td><span class="${statusClass}">${statusText}</span></td>
+                    <td>${actionButtons}</td>
+                </tr>
+            `;
+        }
+        html += '</tbody></table>';
+        listDiv.innerHTML = html;
+    } catch (error) {
+        listDiv.innerHTML = '<div class="error-message">Ошибка загрузки списка токенов</div>';
+        console.error(error);
+    }
+}
+
+// === СОЗДАНИЕ НОВОГО ТОКЕНА ===
+async function createNewToken() {
+    const nameInput = document.getElementById('newUserName');
+    const resultDiv = document.getElementById('newTokenResult');
+    const name = nameInput.value.trim();
+    
+    if (!name) {
+        resultDiv.innerHTML = '<div class="error-message">Введите имя пользователя</div>';
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="loading">Создание токена...</div>';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/token/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, admin_token: currentUserToken })
+        });
+        
+        const data = await response.json();
+        
+        if (data.token) {
+            resultDiv.innerHTML = `
+                <div class="success-message">
+                    <div>Токен успешно создан!</div>
+                    <div class="token-display">
+                        <strong>Имя:</strong> ${data.name}<br>
+                        <strong>Токен:</strong> <code id="generatedToken">${data.token}</code>
+                        <button class="btn btn-small btn-copy" onclick="copyToken('${data.token}')"> Копировать</button>
+                    </div>
+                    <div class="token-hint">Сохраните этот токен — он понадобится пользователю для входа</div>
+                </div>
+            `;
+            nameInput.value = '';
+            await loadTokensList();
+        } else {
+            resultDiv.innerHTML = `<div class="error-message">${data.error || 'Ошибка создания токена'}</div>`;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = '<div class="error-message">Ошибка подключения к серверу</div>';
+        console.error(error);
+    }
+}
+
+// === КОПИРОВАНИЕ ТОКЕНА ===
+function copyToken(token) {
+    navigator.clipboard.writeText(token).then(() => {
+        const btn = event.target;
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Скопировано!';
+        setTimeout(() => { btn.textContent = originalText; }, 2000);
+    }).catch(() => {
+        // Fallback для старых браузеров
+        const textArea = document.createElement('textarea');
+        textArea.value = token;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Токен скопирован: ' + token);
+    });
+}
+
+// === ДЕАКТИВАЦИЯ ТОКЕНА ===
+async function deactivateToken(token) {
+    if (!confirm('Вы уверены, что хотите деактивировать этот токен? Пользователь не сможет войти в систему.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/token/deactivate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, admin_token: currentUserToken })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await loadTokensList();
+        } else {
+            alert(data.error || 'Ошибка деактивации');
+        }
+    } catch (error) {
+        alert('Ошибка подключения к серверу');
+        console.error(error);
+    }
+}
+
+// === АКТИВАЦИЯ ТОКЕНА ===
+async function activateToken(token) {
+    try {
+        const response = await fetch(`${API_BASE}/api/token/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, admin_token: currentUserToken })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            await loadTokensList();
+        } else {
+            alert(data.error || 'Ошибка активации');
+        }
+    } catch (error) {
+        alert('Ошибка подключения к серверу');
+        console.error(error);
+    }
+}
+
 // === ВЫХОД ===
 function logout() {
     currentUserToken = null;
     currentUserName = null;
+    currentUserIsAdmin = false;
     statistics = {};
     showLoginScreen();
 }
@@ -338,7 +530,7 @@ async function finishTest() {
 
     let categoryHtml = '';
     if (wrongCount <= 5) {
-        categoryHtml = '<div class="result-category senior">🏆 Senior СМЭ — Отличный результат!</div>';
+        categoryHtml = '<div class="result-category senior"> Senior СМЭ — Отличный результат!</div>';
     } else if (wrongCount <= 10) {
         categoryHtml = '<div class="result-category middle">⭐ Middle СМЭ — Хороший результат!</div>';
     } else if (wrongCount <= 15) {
