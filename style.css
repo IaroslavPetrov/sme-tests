@@ -455,3 +455,32 @@ footer {
     padding: 8px 16px;
     font-size: 0.9em;
 }
+
+/* === СЛУЧАЙНЫЙ РЕЖИМ === */
+.random-mode-card {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 25px;
+    border-radius: 15px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.3s, box-shadow 0.3s;
+    margin-bottom: 30px;
+}
+
+.random-mode-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(240, 147, 251, 0.4);
+}
+
+/* === ПОДСКАЗКА О НЕСКОЛЬКИХ ОТВЕТАХ === */
+.multiple-hint {
+    background: #fff3cd;
+    color: #856404;
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    font-size: 0.95em;
+    border-left: 4px solid #ffc107;
+    font-weight: 500;
+}

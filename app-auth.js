@@ -8,7 +8,6 @@ let statistics = {};
 let currentUserToken = null;
 let currentUserName = null;
 
-// Адрес сервера (наш VPS)
 const API_BASE = 'http://201.34.156.14:5002';
 
 // === ИНИЦИАЛИЗАЦИЯ ===
@@ -49,8 +48,6 @@ function showLoginScreen() {
             <div id="loginError" class="error-message"></div>
         </div>
     `;
-    
-    // Вход по Enter
     document.getElementById('tokenInput').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') validateToken();
     });
@@ -92,7 +89,7 @@ async function validateToken() {
     }
 }
 
-// === ЗАГРУЗКА СТАТИСТИКИ ПОЛЬЗОВАТЕЛЯ ===
+// === ЗАГРУЗКА СТАТИСТИКИ ===
 async function loadUserStatistics() {
     try {
         const response = await fetch(`${API_BASE}/api/statistics/load`, {
@@ -106,17 +103,14 @@ async function loadUserStatistics() {
         
         if (data.attempts) {
             data.attempts.forEach(attempt => {
-                if (!statistics[attempt.ticket_id]) {
-                    statistics[attempt.ticket_id] = {
-                        attempts: 0,
-                        bestScore: 0,
-                        bestWrong: 100
-                    };
+                const tid = attempt.ticket_id;
+                if (!statistics[tid]) {
+                    statistics[tid] = { attempts: 0, bestScore: 0, bestWrong: 100 };
                 }
-                statistics[attempt.ticket_id].attempts++;
-                if (attempt.percentage > statistics[attempt.ticket_id].bestScore) {
-                    statistics[attempt.ticket_id].bestScore = attempt.percentage;
-                    statistics[attempt.ticket_id].bestWrong = attempt.wrong_count;
+                statistics[tid].attempts++;
+                if (attempt.percentage > statistics[tid].bestScore) {
+                    statistics[tid].bestScore = attempt.percentage;
+                    statistics[tid].bestWrong = attempt.wrong_count;
                 }
             });
         }
@@ -125,7 +119,7 @@ async function loadUserStatistics() {
     }
 }
 
-// === СОХРАНЕНИЕ СТАТИСТИКИ НА СЕРВЕР ===
+// === СОХРАНЕНИЕ СТАТИСТИКИ ===
 async function saveUserStatistics(ticketId, score, wrongCount, percentage) {
     try {
         await fetch(`${API_BASE}/api/statistics/save`, {
@@ -191,13 +185,20 @@ function showMainMenu() {
                 </div>
             </div>
 
-            <h2>Выберите билет</h2>
+            <h2>Режимы тестирования</h2>
+            <div class="random-mode-card" onclick="startTicket('random')">
+                <div class="cat-icon">🎲</div>
+                <div class="ticket-number">Случайные 50 вопросов</div>
+                <div class="ticket-info">Перемешивает все ${questions.length} вопросов и выбирает 50</div>
+            </div>
+
+            <h2>Или выберите конкретный билет</h2>
             ${ticketsHtml}
 
             <div class="categories-info">
                 <h2>Система категорий</h2>
                 <div class="category-card senior">
-                    <div class="cat-icon"></div>
+                    <div class="cat-icon">🏆</div>
                     <div class="cat-name">Senior СМЭ</div>
                     <div class="cat-desc">Не более 5 ошибок</div>
                 </div>
@@ -207,7 +208,7 @@ function showMainMenu() {
                     <div class="cat-desc">Не более 10 ошибок</div>
                 </div>
                 <div class="category-card junior">
-                    <div class="cat-icon"></div>
+                    <div class="cat-icon">📚</div>
                     <div class="cat-name">Junior СМЭ</div>
                     <div class="cat-desc">Не более 15 ошибок</div>
                 </div>
@@ -226,7 +227,15 @@ function logout() {
 
 // === НАЧАЛО ТЕСТА ===
 function startTicket(ticketId) {
-    currentTicket = tickets.find(t => t.id === ticketId);
+    if (ticketId === 'random') {
+        const shuffled = [...questions].sort(() => 0.5 - Math.random());
+        currentTicket = {
+            id: 'random',
+            questions: shuffled.slice(0, 50)
+        };
+    } else {
+        currentTicket = tickets.find(t => t.id === ticketId);
+    }
     currentQuestionIndex = 0;
     userAnswers = new Array(currentTicket.questions.length).fill(null);
     showQuestion();
@@ -239,16 +248,22 @@ function showQuestion() {
     const progress = ((currentQuestionIndex + 1) / currentTicket.questions.length) * 100;
     const isLast = currentQuestionIndex === currentTicket.questions.length - 1;
 
+    const multipleHint = question.hasMultipleCorrect 
+        ? '<div class="multiple-hint">⚠️ В этом вопросе может быть несколько правильных ответов</div>' 
+        : '';
+
     let answersHtml = '';
     question.answers.forEach((answer, idx) => {
         const selected = userAnswers[currentQuestionIndex] === idx ? ' selected' : '';
         answersHtml += `<div class="answer-option${selected}" onclick="selectAnswer(${idx})">${answer.text}</div>`;
     });
 
+    const title = currentTicket.id === 'random' ? 'Случайный тест' : 'Билет ' + currentTicket.id;
+
     app.innerHTML = `
         <div class="test-screen">
             <div class="test-header">
-                <h2>Билет ${currentTicket.id}</h2>
+                <h2>${title}</h2>
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${progress}%"></div>
                 </div>
@@ -256,6 +271,7 @@ function showQuestion() {
             </div>
 
             <div class="question-container">
+                ${multipleHint}
                 <div class="question-text">${question.question}</div>
                 <div class="answers-list">${answersHtml}</div>
             </div>
@@ -307,21 +323,19 @@ async function finishTest() {
     });
 
     const percentage = Math.round((correctCount / currentTicket.questions.length) * 100);
+    const ticketIdToSave = currentTicket.id === 'random' ? 'random' : currentTicket.id;
 
-    // Сохраняем на сервер
-    await saveUserStatistics(currentTicket.id, correctCount, wrongCount, percentage);
+    await saveUserStatistics(ticketIdToSave, correctCount, wrongCount, percentage);
     
-    // Обновляем локальную статистику
-    if (!statistics[currentTicket.id]) {
-        statistics[currentTicket.id] = { attempts: 0, bestScore: 0, bestWrong: currentTicket.questions.length };
+    if (!statistics[ticketIdToSave]) {
+        statistics[ticketIdToSave] = { attempts: 0, bestScore: 0, bestWrong: currentTicket.questions.length };
     }
-    statistics[currentTicket.id].attempts++;
-    if (percentage > statistics[currentTicket.id].bestScore) {
-        statistics[currentTicket.id].bestScore = percentage;
-        statistics[currentTicket.id].bestWrong = wrongCount;
+    statistics[ticketIdToSave].attempts++;
+    if (percentage > statistics[ticketIdToSave].bestScore) {
+        statistics[ticketIdToSave].bestScore = percentage;
+        statistics[ticketIdToSave].bestWrong = wrongCount;
     }
 
-    // Определяем категорию
     let categoryHtml = '';
     if (wrongCount <= 5) {
         categoryHtml = '<div class="result-category senior">🏆 Senior СМЭ — Отличный результат!</div>';
@@ -354,7 +368,7 @@ async function finishTest() {
             ${categoryHtml}
             <div class="result-actions">
                 <button class="btn btn-primary" onclick="showMainMenu()">В главное меню</button>
-                <button class="btn btn-secondary" onclick="startTicket(${currentTicket.id})">Пройти ещё раз</button>
+                <button class="btn btn-secondary" onclick="startTicket('${currentTicket.id}')">Пройти ещё раз</button>
             </div>
         </div>
     `;
