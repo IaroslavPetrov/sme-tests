@@ -196,7 +196,7 @@ function showMainMenu() {
 
             <h2>Режимы тестирования</h2>
             <div class="random-mode-card" onclick="startTicket('random')">
-                <div class="cat-icon">🎲</div>
+                <div class="cat-icon"></div>
                 <div class="ticket-number">Случайные 50 вопросов</div>
                 <div class="ticket-info">Перемешивает все ${questions.length} вопросов и выбирает 50</div>
             </div>
@@ -232,7 +232,7 @@ async function showAdminPanel() {
     app.innerHTML = `
         <div class="admin-panel">
             <div class="admin-header">
-                <h2>⚙️ Админ-панель</h2>
+                <h2>️ Админ-панель</h2>
                 <button class="btn btn-secondary" onclick="showMainMenu()">← Назад</button>
             </div>
 
@@ -325,7 +325,7 @@ async function createNewToken() {
                     <div class="token-display">
                         <strong>Имя:</strong> ${data.name}<br>
                         <strong>Токен:</strong> <code id="generatedToken">${data.token}</code>
-                        <button class="btn btn-small btn-copy" onclick="copyToken('${data.token}')"> Копировать</button>
+                        <button class="btn btn-small btn-copy" onclick="copyToken('${data.token}')">📋 Копировать</button>
                     </div>
                     <div class="token-hint">Сохраните этот токен — он понадобится пользователю для входа</div>
                 </div>
@@ -349,7 +349,6 @@ function copyToken(token) {
         btn.textContent = '✓ Скопировано!';
         setTimeout(() => { btn.textContent = originalText; }, 2000);
     }).catch(() => {
-        // Fallback для старых браузеров
         const textArea = document.createElement('textarea');
         textArea.value = token;
         document.body.appendChild(textArea);
@@ -429,7 +428,29 @@ function startTicket(ticketId) {
         currentTicket = tickets.find(t => t.id === ticketId);
     }
     currentQuestionIndex = 0;
-    userAnswers = new Array(currentTicket.questions.length).fill(null);
+    // Для каждого вопроса создаём Set выбранных ответов
+    userAnswers = currentTicket.questions.map(q => new Set());
+    showQuestion();
+}
+
+// === ВЫБОР ОТВЕТА ===
+function selectAnswer(answerIndex) {
+    const question = currentTicket.questions[currentQuestionIndex];
+    const selectedSet = userAnswers[currentQuestionIndex];
+    
+    if (question.hasMultipleCorrect) {
+        // Для вопросов с несколькими правильными ответами — добавляем/убираем
+        if (selectedSet.has(answerIndex)) {
+            selectedSet.delete(answerIndex);
+        } else {
+            selectedSet.add(answerIndex);
+        }
+    } else {
+        // Для обычных вопросов — только один ответ
+        selectedSet.clear();
+        selectedSet.add(answerIndex);
+    }
+    
     showQuestion();
 }
 
@@ -439,15 +460,28 @@ function showQuestion() {
     const app = document.getElementById('app');
     const progress = ((currentQuestionIndex + 1) / currentTicket.questions.length) * 100;
     const isLast = currentQuestionIndex === currentTicket.questions.length - 1;
+    const selectedSet = userAnswers[currentQuestionIndex];
 
     const multipleHint = question.hasMultipleCorrect 
-        ? '<div class="multiple-hint">⚠️ В этом вопросе может быть несколько правильных ответов</div>' 
+        ? '<div class="multiple-hint">⚠️ В этом вопросе может быть несколько правильных ответов — выберите все подходящие варианты</div>' 
         : '';
+
+    const inputType = question.hasMultipleCorrect ? 'checkbox' : 'radio';
+    const selectionLabel = question.hasMultipleCorrect ? 'Выбрано: ' + selectedSet.size : '';
 
     let answersHtml = '';
     question.answers.forEach((answer, idx) => {
-        const selected = userAnswers[currentQuestionIndex] === idx ? ' selected' : '';
-        answersHtml += `<div class="answer-option${selected}" onclick="selectAnswer(${idx})">${answer.text}</div>`;
+        const isSelected = selectedSet.has(idx);
+        const selectedClass = isSelected ? ' selected' : '';
+        const inputHtml = question.hasMultipleCorrect 
+            ? `<input type="checkbox" ${isSelected ? 'checked' : ''} class="answer-checkbox">`
+            : `<input type="radio" name="answer" ${isSelected ? 'checked' : ''} class="answer-radio">`;
+        answersHtml += `
+            <div class="answer-option${selectedClass}" onclick="selectAnswer(${idx})">
+                ${inputHtml}
+                <span>${answer.text}</span>
+            </div>
+        `;
     });
 
     const title = currentTicket.id === 'random' ? 'Случайный тест' : 'Билет ' + currentTicket.id;
@@ -459,7 +493,7 @@ function showQuestion() {
                 <div class="progress-bar">
                     <div class="progress-fill" style="width: ${progress}%"></div>
                 </div>
-                <div class="question-counter">Вопрос ${currentQuestionIndex + 1} из ${currentTicket.questions.length}</div>
+                <div class="question-counter">Вопрос ${currentQuestionIndex + 1} из ${currentTicket.questions.length} ${selectionLabel ? '• ' + selectionLabel : ''}</div>
             </div>
 
             <div class="question-container">
@@ -477,12 +511,6 @@ function showQuestion() {
             </div>
         </div>
     `;
-}
-
-// === ВЫБОР ОТВЕТА ===
-function selectAnswer(answerIndex) {
-    userAnswers[currentQuestionIndex] = answerIndex;
-    showQuestion();
 }
 
 // === НАВИГАЦИЯ ===
@@ -506,8 +534,19 @@ async function finishTest() {
     let wrongCount = 0;
 
     currentTicket.questions.forEach((question, index) => {
-        const userAnswer = userAnswers[index];
-        if (userAnswer !== null && question.answers[userAnswer].correct) {
+        const selectedSet = userAnswers[index];
+        
+        // Находим индексы правильных ответов
+        const correctIndices = new Set();
+        question.answers.forEach((answer, idx) => {
+            if (answer.correct) correctIndices.add(idx);
+        });
+        
+        // Проверяем: выбраны ВСЕ правильные и НЕ выбраны неправильные
+        const allCorrectSelected = [...correctIndices].every(i => selectedSet.has(i));
+        const noWrongSelected = [...selectedSet].every(i => correctIndices.has(i));
+        
+        if (allCorrectSelected && noWrongSelected && selectedSet.size > 0) {
             correctCount++;
         } else {
             wrongCount++;
@@ -530,7 +569,7 @@ async function finishTest() {
 
     let categoryHtml = '';
     if (wrongCount <= 5) {
-        categoryHtml = '<div class="result-category senior"> Senior СМЭ — Отличный результат!</div>';
+        categoryHtml = '<div class="result-category senior">🏆 Senior СМЭ — Отличный результат!</div>';
     } else if (wrongCount <= 10) {
         categoryHtml = '<div class="result-category middle">⭐ Middle СМЭ — Хороший результат!</div>';
     } else if (wrongCount <= 15) {
