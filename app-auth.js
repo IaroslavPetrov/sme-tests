@@ -194,9 +194,16 @@ function showMainMenu() {
                 </div>
             </div>
 
-            <h2>Режимы тестирования</h2>
+            <h2>Режимы работы</h2>
+            
+            <div class="search-mode-card" onclick="showSearchMode()">
+                <div class="cat-icon">🔍</div>
+                <div class="ticket-number">Поиск вопросов</div>
+                <div class="ticket-info">Введите текст вопроса — система покажет правильные ответы</div>
+            </div>
+
             <div class="random-mode-card" onclick="startTicket('random')">
-                <div class="cat-icon"></div>
+                <div class="cat-icon">🎲</div>
                 <div class="ticket-number">Случайные 50 вопросов</div>
                 <div class="ticket-info">Перемешивает все ${questions.length} вопросов и выбирает 50</div>
             </div>
@@ -226,13 +233,104 @@ function showMainMenu() {
     `;
 }
 
+// === ПОИСК ВОПРОСОВ ===
+let searchTimeout = null;
+
+function showSearchMode() {
+    const app = document.getElementById('app');
+    app.innerHTML = `
+        <div class="search-screen">
+            <div class="search-header">
+                <h2>🔍 Поиск вопросов</h2>
+                <button class="btn btn-secondary" onclick="showMainMenu()">← Назад</button>
+            </div>
+            
+            <div class="search-input-container">
+                <input type="text" id="searchInput" placeholder="Введите начало текста вопроса..." class="search-input" autofocus>
+                <div class="search-hint"> Достаточно ввести несколько слов из вопроса</div>
+            </div>
+            
+            <div id="searchResults" class="search-results">
+                <div class="search-placeholder">Начните вводить текст для поиска...</div>
+            </div>
+        </div>
+    `;
+    
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('input', function(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            performSearch(e.target.value);
+        }, 300);
+    });
+    
+    setTimeout(() => searchInput.focus(), 100);
+}
+
+function performSearch(query) {
+    const resultsDiv = document.getElementById('searchResults');
+    
+    if (!query || query.trim().length < 3) {
+        resultsDiv.innerHTML = '<div class="search-placeholder">Введите минимум 3 символа для поиска...</div>';
+        return;
+    }
+    
+    const searchTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 0);
+    
+    const foundQuestions = questions.filter(q => {
+        const questionText = q.question.toLowerCase();
+        return searchTerms.every(term => questionText.includes(term));
+    });
+    
+    if (foundQuestions.length === 0) {
+        resultsDiv.innerHTML = '<div class="search-placeholder">❌ Вопросы не найдены</div>';
+        return;
+    }
+    
+    let html = `<div class="search-count">Найдено вопросов: ${foundQuestions.length}</div>`;
+    
+    foundQuestions.slice(0, 20).forEach(q => {
+        const correctAnswers = q.answers.filter(a => a.correct);
+        const multipleHint = q.hasMultipleCorrect ? '<span class="multiple-badge">Несколько ответов</span>' : '';
+        
+        html += `
+            <div class="search-result-item">
+                <div class="result-question">
+                    <span class="question-number">${q.id}.</span>
+                    ${highlightText(q.question, searchTerms)}
+                    ${multipleHint}
+                </div>
+                <div class="result-answers">
+                    <div class="answers-title">✅ Правильные ответы:</div>
+                    ${correctAnswers.map(a => `<div class="correct-answer">• ${a.text}</div>`).join('')}
+                </div>
+            </div>
+        `;
+    });
+    
+    if (foundQuestions.length > 20) {
+        html += `<div class="search-more">... и ещё ${foundQuestions.length - 20} вопросов</div>`;
+    }
+    
+    resultsDiv.innerHTML = html;
+}
+
+function highlightText(text, terms) {
+    let result = text;
+    terms.forEach(term => {
+        const regex = new RegExp(`(${term})`, 'gi');
+        result = result.replace(regex, '<mark>$1</mark>');
+    });
+    return result;
+}
+
 // === АДМИН-ПАНЕЛЬ ===
 async function showAdminPanel() {
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="admin-panel">
             <div class="admin-header">
-                <h2>️ Админ-панель</h2>
+                <h2>⚙️ Админ-панель</h2>
                 <button class="btn btn-secondary" onclick="showMainMenu()">← Назад</button>
             </div>
 
@@ -428,7 +526,6 @@ function startTicket(ticketId) {
         currentTicket = tickets.find(t => t.id === ticketId);
     }
     currentQuestionIndex = 0;
-    // Для каждого вопроса создаём Set выбранных ответов
     userAnswers = currentTicket.questions.map(q => new Set());
     showQuestion();
 }
@@ -439,14 +536,12 @@ function selectAnswer(answerIndex) {
     const selectedSet = userAnswers[currentQuestionIndex];
     
     if (question.hasMultipleCorrect) {
-        // Для вопросов с несколькими правильными ответами — добавляем/убираем
         if (selectedSet.has(answerIndex)) {
             selectedSet.delete(answerIndex);
         } else {
             selectedSet.add(answerIndex);
         }
     } else {
-        // Для обычных вопросов — только один ответ
         selectedSet.clear();
         selectedSet.add(answerIndex);
     }
@@ -463,11 +558,11 @@ function showQuestion() {
     const selectedSet = userAnswers[currentQuestionIndex];
 
     const multipleHint = question.hasMultipleCorrect 
-        ? '<div class="multiple-hint">⚠️ В этом вопросе может быть несколько правильных ответов — выберите все подходящие варианты</div>' 
+        ? '<div class="multiple-hint">️ В этом вопросе может быть несколько правильных ответов — выберите все подходящие варианты</div>' 
         : '';
 
     const inputType = question.hasMultipleCorrect ? 'checkbox' : 'radio';
-    const selectionLabel = question.hasMultipleCorrect ? 'Выбрано: ' + selectedSet.size : '';
+    const selectionLabel = question.hasMultipleCorrect ? '• Выбрано: ' + selectedSet.size : '';
 
     let answersHtml = '';
     question.answers.forEach((answer, idx) => {
@@ -535,14 +630,11 @@ async function finishTest() {
 
     currentTicket.questions.forEach((question, index) => {
         const selectedSet = userAnswers[index];
-        
-        // Находим индексы правильных ответов
         const correctIndices = new Set();
         question.answers.forEach((answer, idx) => {
             if (answer.correct) correctIndices.add(idx);
         });
         
-        // Проверяем: выбраны ВСЕ правильные и НЕ выбраны неправильные
         const allCorrectSelected = [...correctIndices].every(i => selectedSet.has(i));
         const noWrongSelected = [...selectedSet].every(i => correctIndices.has(i));
         
@@ -569,13 +661,13 @@ async function finishTest() {
 
     let categoryHtml = '';
     if (wrongCount <= 5) {
-        categoryHtml = '<div class="result-category senior">🏆 Senior СМЭ — Отличный результат!</div>';
+        categoryHtml = '<div class="result-category senior"> Senior СМЭ — Отличный результат!</div>';
     } else if (wrongCount <= 10) {
         categoryHtml = '<div class="result-category middle">⭐ Middle СМЭ — Хороший результат!</div>';
     } else if (wrongCount <= 15) {
         categoryHtml = '<div class="result-category junior">📚 Junior СМЭ — Неплохо, но есть куда расти!</div>';
     } else {
-        categoryHtml = '<div class="result-category fail">📖 Нужно больше практики. Попробуйте ещё раз!</div>';
+        categoryHtml = '<div class="result-category fail"> Нужно больше практики. Попробуйте ещё раз!</div>';
     }
 
     const app = document.getElementById('app');
