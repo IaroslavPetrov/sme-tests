@@ -212,20 +212,20 @@ function showMainMenu() {
             ${ticketsHtml}
 
             <div class="categories-info">
-                <h2>Система категорий</h2>
+                <h2>Система оценки</h2>
                 <div class="category-card senior">
                     <div class="cat-icon">🏆</div>
-                    <div class="cat-name">Senior СМЭ</div>
+                    <div class="cat-name">Эксперт</div>
                     <div class="cat-desc">Не более 5 ошибок</div>
                 </div>
                 <div class="category-card middle">
                     <div class="cat-icon">⭐</div>
-                    <div class="cat-name">Middle СМЭ</div>
+                    <div class="cat-name">Продвинутый</div>
                     <div class="cat-desc">Не более 10 ошибок</div>
                 </div>
                 <div class="category-card junior">
                     <div class="cat-icon">📚</div>
-                    <div class="cat-name">Junior СМЭ</div>
+                    <div class="cat-name">Начинающий</div>
                     <div class="cat-desc">Не более 15 ошибок</div>
                 </div>
             </div>
@@ -661,11 +661,11 @@ async function finishTest() {
 
     let categoryHtml = '';
     if (wrongCount <= 5) {
-        categoryHtml = '<div class="result-category senior"> Senior СМЭ — Отличный результат!</div>';
+        categoryHtml = '<div class="result-category senior"> Эксперт — Отличный результат!</div>';
     } else if (wrongCount <= 10) {
-        categoryHtml = '<div class="result-category middle">⭐ Middle СМЭ — Хороший результат!</div>';
+        categoryHtml = '<div class="result-category middle">⭐ Продвинутый — Хороший результат!</div>';
     } else if (wrongCount <= 15) {
-        categoryHtml = '<div class="result-category junior">📚 Junior СМЭ — Неплохо, но есть куда расти!</div>';
+        categoryHtml = '<div class="result-category junior">📚 Начинающий — Неплохо, но есть куда расти!</div>';
     } else {
         categoryHtml = '<div class="result-category fail"> Нужно больше практики. Попробуйте ещё раз!</div>';
     }
